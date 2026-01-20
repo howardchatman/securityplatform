@@ -1,36 +1,32 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { hashPassword } from "@/lib/auth";
 
-// This endpoint creates the admin user if it doesn't exist
-// Should only be called once during setup
+// This endpoint creates/updates the admin user with correct password hash
+// Call this once to set up the admin account
 export async function POST() {
   const adminEmail = "howard@chatmaninc.com";
   const adminPassword = "Howard1234";
 
   try {
-    // Check if user already exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const userExists = existingUsers?.users?.some(
-      (user) => user.email === adminEmail
-    );
+    // Hash the password properly with bcrypt
+    const passwordHash = await hashPassword(adminPassword);
 
-    if (userExists) {
-      return NextResponse.json({
-        success: true,
-        message: "Admin user already exists",
-      });
-    }
-
-    // Create the admin user
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email: adminEmail,
-      password: adminPassword,
-      email_confirm: true,
-      user_metadata: {
-        name: "Howard",
-        role: "admin",
-      },
-    });
+    // Upsert the admin user
+    const { data, error } = await supabaseAdmin
+      .from("security_admin_users")
+      .upsert(
+        {
+          email: adminEmail,
+          password_hash: passwordHash,
+          name: "Howard",
+          role: "admin",
+          is_active: true,
+        },
+        { onConflict: "email" }
+      )
+      .select()
+      .single();
 
     if (error) {
       console.error("Error creating admin user:", error);
@@ -42,8 +38,8 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: "Admin user created successfully",
-      userId: data.user.id,
+      message: "Admin user created/updated successfully",
+      userId: data.id,
     });
   } catch (error) {
     console.error("Error in setup-admin:", error);
@@ -52,4 +48,9 @@ export async function POST() {
       { status: 500 }
     );
   }
+}
+
+// Also allow GET for easy browser access
+export async function GET() {
+  return POST();
 }
