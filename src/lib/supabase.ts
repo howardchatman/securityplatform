@@ -1,14 +1,48 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // Client-side Supabase client (limited access via RLS)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Only create if we have the required env vars
+let _supabase: SupabaseClient | null = null;
+export const supabase: SupabaseClient = (() => {
+  if (!_supabase && supabaseUrl && supabaseAnonKey) {
+    _supabase = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  if (!_supabase) {
+    // Return a mock client that won't crash but won't work
+    // This allows the app to load even without env vars configured
+    console.warn("Supabase client not initialized - missing environment variables");
+    return {
+      auth: {
+        getUser: async () => ({ data: { user: null }, error: null }),
+        getSession: async () => ({ data: { session: null }, error: null }),
+        signInWithPassword: async () => ({ data: { user: null, session: null }, error: new Error("Supabase not configured") }),
+        signUp: async () => ({ data: { user: null, session: null }, error: new Error("Supabase not configured") }),
+        signOut: async () => ({ error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      },
+      from: () => ({
+        select: () => ({ data: null, error: new Error("Supabase not configured") }),
+        insert: () => ({ select: () => ({ single: () => ({ data: null, error: new Error("Supabase not configured") }) }) }),
+        update: () => ({ eq: () => ({ select: () => ({ single: () => ({ data: null, error: new Error("Supabase not configured") }) }) }) }),
+        upsert: () => ({ select: () => ({ single: () => ({ data: null, error: new Error("Supabase not configured") }) }) }),
+      }),
+    } as unknown as SupabaseClient;
+  }
+  return _supabase;
+})();
 
 // Server-side Supabase client (full access for API routes)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+let _supabaseAdmin: SupabaseClient | null = null;
+export const supabaseAdmin: SupabaseClient = (() => {
+  if (!_supabaseAdmin && supabaseUrl && supabaseServiceKey) {
+    _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return _supabaseAdmin || supabase;
+})();
 
 // ============================================
 // LEAD FUNCTIONS
